@@ -1,31 +1,153 @@
-***The In-Person SDK for Windows is deprecated when integrated with the BBPOS Chipper 2X reader and ID Tech Augusta.  The BBPOS Chipper 2X and ID Tech Augusta hardware is no longer available.***
+***The In-Person SDK for Windows is deprecated when integrated with the BBPOS Chipper 2X reader and ID Tech Augusta. The BBPOS Chipper 2X and ID Tech Augusta hardware is no longer available.***
 
-Overview
-=========
+# Overview
 
-The In-Person Windows SDK enables your payment application to securely submit chip-card payments to Authorize.Net. Before you use this SDK, we recommend that you familizarize yourself with [Authorize.Net's C# SDK](https://github.com/AuthorizeNet/sample-code-csharp), which provides an interface to communicate with Authorize.Net. 
+The In-Person Windows SDK enables your payment application to securely submit chip-card payments to Authorize.Net. Before you use this SDK, we recommend that you familiarize yourself with [Authorize.Net's C# SDK](https://github.com/AuthorizeNet/sample-code-csharp), which provides an interface to communicate with Authorize.Net.
 
-This SDK is currently a certified solution with TSYS. To determine which processor you use, you can submit an API call to [getMerchantDetailsRequest](https://developer.authorize.net/api/reference/#transaction-reporting-get-merchant-details). The response contains a `processors` object master.
+This SDK is currently a certified solution with TSYS. To determine which processor you use, you can submit an API call to [getMerchantDetailsRequest](https://developer.authorize.net/api/reference/#transaction-reporting-get-merchant-details). The response contains a `processors` object.
 
 For a list of frequently asked questions, see [our EMV FAQ page](https://support.authorize.net/s/article/Merchant-EMV-Chip-FAQs).
 
-Supported Encrypted Readers
-===================
+# Authentication
+
+### **Transaction Key Authentication (Recommended)**
+
+Authentication using a password and `mobileDeviceLoginRequest` is deprecated and will no longer be supported after **November 12, 2025**. You must update your integration to use a Transaction Key for authentication.
+
+To get your credentials, log in to the Merchant Portal and navigate to **Account > Settings > API Credentials & Keys**. From there, you can obtain your **API Login ID** and generate a new **Transaction Key**.
+
+Update your request's `merchantAuthentication` object to use the `transactionKey` as shown below.
+
+```csharp
+request.merchantAuthentication = new merchantAuthenticationType()
+{
+    name = "YOUR_API_LOGIN_ID",
+    Item = "YOUR_TRANSACTION_KEY",
+    ItemElementName = ItemChoiceType.transactionKey,
+};
+```
+
+**Note: This Transaction Key authentication method should be used for all Authorize.Net API requests, such as `getUnsettledTransactionsRequest`, `getSettledBatchListRequest`, sending email receipts, and more.**
+
+### **Password Authentication (Deprecated)**
+
+The method of authenticating with a username, password, and `mobileDeviceId` to generate a `sessionToken` is now deprecated. Please migrate to Transaction Key authentication before November 12, 2025.
+
+# Supported Encrypted Readers
+
 Encrypted card readers supported by this SDK can be obtained from our [POS Portal](https://partner.posportal.com/authorizenet/auth/).
 
-Integrating the SDK With Your Application
-===================
+# Running the Sample App
 
-1. Download the SDK.
+The following steps will guide you on how to run the included sample app with the new Transaction Key authentication method.
 
-2. Copy the SDK folder into your project folder.
+### 1. Change the Startup URI in `App.xaml`
 
-3. Open the project in Visual Studio.
+Open the `ANetEmvDesktopSdk.Sample` project. In the `App.xaml` file, change the `StartupUri` from `MainWindow.xaml` to `MainController.xaml`.
 
-4. Add a reference to `ANetEmvDesktop.dll`.
+```xml
+<Application x:Class="ANetEmvDesktopSdk.Sample.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:ANetEmvDesktopSdk.Sample"
+             StartupUri="/MainController.xaml"> <!-- This was /MainWindow.xaml before -->
+    <Application.Resources>
+         
+    </Application.Resources>
+</Application>
+```
 
-5. Add the following references from NuGet Manager. Tap on Tools -&gt;
-NuGet Package Manager -&gt; Manage NuGet Package Manager
+### 2. Initialize the SDK in `MainController.xaml.cs`
+
+Open the `MainController.xaml.cs` file and add the following lines to the `public MainController()` constructor to initialize the SDK launcher.
+
+```csharp
+public MainController()
+{
+    InitializeComponent();
+    this.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+    Application.Current.Exit += new ExitEventHandler(this.OnApplicationExit);
+    
+    // New added lines for initializing launcher
+    Random random = new Random();
+    this.amount.Text = (random.Next(1, 1000)).ToString();
+    // Initialize with your desired environment, currency, terminal ID, and options
+    this.launcher = new SdkLauncher(this.sdkEnvironment, "840", "", true, false);
+    this.launcher.setMerchantInfo("YOUR_MERCHANT_NAME", "YOUR_MERCHANT_ID");
+    this.launcher.enableLogging();
+}
+```
+You can customize the `SdkLauncher` constructor with your specific settings:
+*   `sdkEnvironment`: `AuthorizeNet.Environment.SANDBOX` or `AuthorizeNet.Environment.LIVE`.
+*   `currencyCode`: The currency code for transactions (e.g., "840" for USD).
+*   `terminalID`: Your assigned Terminal ID.
+*   `skipSignature`: `true` to skip the signature screen.
+*   `showReceipt`: `true` to display the SDK's receipt screen.
+
+### 3. Update Merchant Authentication
+
+In `MainController.xaml.cs`, find all method where `merchantAuthentication` is set (for example, in `getRequest()`) and update it to use your **API Login ID** and **Transaction Key** instead of a `sessionToken`. Here is the `getRequest()` method of `MainController.xaml.cs` updated:
+
+```csharp
+        private createTransactionRequest getRequest ()
+        {
+            Debug.Write("Session Token" + this.sessionToken);
+            Random random = new Random();
+
+            ApiOperationBase<ANetApiRequest, ANetApiResponse>.MerchantAuthentication = new merchantAuthenticationType()
+            {
+                name = "YOUR_API_LOGIN_ID",
+                Item = "YOUR_TRANSACTION_KEY",
+                ItemElementName = ItemChoiceType.transactionKey,
+            };
+
+            ApiOperationBase<ANetApiRequest, ANetApiResponse>.RunEnvironment = this.sdkEnvironment;
+
+            transactionRequestType transaction = new transactionRequestType()
+            {
+                amount = Convert.ToDecimal(this.amount.Text, CultureInfo.InvariantCulture),
+                transactionSettings = new settingType[] {
+                },
+                retail = new transRetailInfoType()
+                {
+                    deviceType = "7",
+                    marketType = "2",
+                },
+                order = new orderType()
+                {
+                    description = "Windows SDK Order",
+                    invoiceNumber = Convert.ToString(random.Next(1999999, 999999999))
+                }
+            };
+            transaction.terminalNumber = this.terminalID;
+            createTransactionRequest request = new createTransactionRequest()
+            {
+                clientId = "sdk-inperson-windows",
+                transactionRequest = transaction
+            };
+            Debug.Write("Session Token" + this.sessionToken);
+            request.merchantAuthentication = new merchantAuthenticationType()
+            {
+                name = "YOUR_API_LOGIN_ID",
+                Item = "YOUR_TRANSACTION_KEY",
+                ItemElementName = ItemChoiceType.transactionKey,
+            };
+            return request;
+        }
+```
+
+### 4. Build and Run
+
+Build and run the `ANetEmvDesktopSdk.Sample` project. The application will now bypass the old login screen and start directly, ready to process transactions.
+
+# Integrating the SDK With Your Application
+
+1.  Download the SDK.
+
+2.  Copy the SDK folder into your project folder.
+3.  Open the project in Visual Studio.
+4.  Add a reference to `ANetEmvDesktop.dll`.
+5.  Add the following references from NuGet Manager (Tools -> NuGet Package Manager -> Manage NuGet Packages for Solution):
 
 ```
 i.  AuthorizeNet.dll
@@ -35,7 +157,7 @@ iv. Microsft.Bcl.Async
 v.  Microsoft.Bcl.Build
 ```
 
-6. If you use the IDTech_Augusta card reader, add the .dll references shown below from the _IDTechSdk_ folder to your project. Then right-click your project and add the .dll references as existing items. 
+6.  If you use the IDTech_Augusta card reader, add the .dll references shown below from the `IDTechSdk` folder to your project. Then right-click your project and add the .dll references as existing items.
 
 ```
 i.   Augusta_config.dll
@@ -50,117 +172,86 @@ ix.  Augusta_msr.dll
 x.   Augusta_parse.dll
 ```
 
-7. Initialize the `AuthorizeNet` SDK and authenticate the user to generate the session token. Your application must log in or authenticate the user before posting transactions. 
+8. Your application must implement the `SdkListener` interface and its methods to receive callbacks from the SDK during various processes.
 
->     ApiOperationBase<ANetApiRequest, ANetApiResponse>.RunEnvironment = AuthorizeNet.Environment.SANDBOX;
->     mobileDeviceLoginRequest request = new mobileDeviceLoginRequest()
->     {
->         merchantAuthentication = new merchantAuthenticationType()
->         {
->                name = //username,
->                Item = //password,
->                mobileDeviceId = //unique device identifier,
->                ItemElementName = ItemChoiceType.password
->          }
->     };
->     mobileDeviceLoginController controller = new mobileDeviceLoginController(request);
->     mobileDeviceLoginResponse response = controller.ExecuteWithApiResponse();
+```csharp
+public interface SdkListener
+{
+    void transactionCompleted(createTransactionResponse response, bool isSuccess, string customerSignature, ErrorResponse errorResponse);
+    void transactionStatus(TransactionStatus iTransactionStatus);
+    void transactionCanceled();
+    void hideCancelTransaction();
+    void processCardProgress(TransactionStatus iProgress);
+    void processCardCompletedWithStatus(bool iStatus);
+    void requestSelectApplication(List<string> appList);
+    void readerDeviceInfo(Dictionary<string, string> iDeviceInfo);
 
-8. Your application must implement the `SdkListener` interface and respond to all the methods as shown below.
+    // item1: Config update, item2: Firmware update
+    void OTAUpdateRequired(Tuple<OTAUpdateResult, OTAUpdateResult> iCheckUpdateStatus, string iErrorMessage);
+    void OTAUpdateProgress(double iPercentage, OTAUpdateType iOTAUpdateType);
 
->     public interface SdkListener
->     {
->         void transactionCompleted(createTransactionResponse response, bool isSuccess, string customerSignature, ErrorResponse 
->         errorResponse);
->         void transactionStatus(TransactionStatus iTransactionStatus);
->         void transactionCanceled();
->         void hideCancelTransaction();
->         void processCardProgress(TransactionStatus iProgress);
->         void processCardCompletedWithStatus(bool iStatus);
->         void requestSelectApplication(List<string> appList);
->         void readerDeviceInfo(Dictionary<string, string> iDeviceInfo);
->
->       //item1 Config update
->       //item2 Firmware update
->         void OTAUpdateRequired(Tuple<OTAUpdateResult, OTAUpdateResult> iCheckUpdateStatus, string iErrorMessage);
->         void OTAUpdateProgress(double iPercentage, OTAUpdateType iOTAUpdateType);
->
->       //item1 Config update
->       //item2 Firmware update
->         void OTAUpdateCompleted(Tuple<OTAUpdateResult, OTAUpdateResult> iUpdateStatus, string iErrorMessage);
->     }
-
-Initializing ANetEmvDesktopSdk
-=============================
-
-```
-launcher = new SdkLauncher(iEnvironment, iCurrencyCode, iTerminalID,
-iSkipSignature, iShowReceipt); 
+    // item1: Config update, item2: Firmware update
+    void OTAUpdateCompleted(Tuple<OTAUpdateResult, OTAUpdateResult> iUpdateStatus, string iErrorMessage);
+}
 ```
 
->     iEnvironment: There are two environments - SANDBOX for testing your integration and LIVE for processing real transactions.
->     iCurrencyCode: Currency code of the country. For example, the USA currency code is 840.
->     iTerminalID: Terminal ID of the merchant terminal.
->     iSkipSignature: Set to true to skip the signature during checkout.
->     iShowReceipt: Boolean to enable ordisble the receipt screen in the transaction flow.
+# Initializing ANetEmvDesktopSdk
 
-Set Reader Device Type 
-===========================
-
-```
- SDK supports two devices: AnywhereCommerce_Walker and IDTech_Augusta
- AnywhereCommerce_Walker is selected by default.
+```csharp
+launcher = new SdkLauncher(iEnvironment, iCurrencyCode, iTerminalID, iSkipSignature, iShowReceipt); 
 ```
 
->   public void setReadername(ReaderName readerName) Refer: SDKLauncher
+*   `iEnvironment`: There are two environments - `SANDBOX` for testing your integration and `LIVE` for processing real transactions.
+*   `iCurrencyCode`: Currency code of the country. For example, the USA currency code is 840.
+*   `iTerminalID`: Terminal ID of the merchant terminal.
+*   `iSkipSignature`: Set to `true` to skip the signature during checkout.
+*   `iShowReceipt`: Boolean to enable or disable the receipt screen in the transaction flow.
 
-Set Terminal Mode
-======================
+# Set Reader Device Type
 
-```
-SDK allows Swipe or Insert_or_swipe. Insert_or_swipe accepts chio-based transactions as well as Swipe/MSR transaction; Swipe accepts only MSR/Swipe transactions. 
-```
-
->   public void setTerminalMode(TerminalMode iTerminalCapability)
-
-```
-  Insert_or_swipe is selected by default.
-  Refer to the SDKLauncher file and the sample app for more details.
+```csharp
+// SDK supports two devices: AnywhereCommerce_Walker and IDTech_Augusta
+// AnywhereCommerce_Walker is selected by default.
+public void setReadername(ReaderName readerName) // Refer: SDKLauncher
 ```
 
-Set Reader Device Connection Type
-=====================================
+# Set Terminal Mode
 
-```
-Only AnywhereCommerce_Walker device supports two types of connection: USB and Bluetooth. IDTech_Augusta only supports USB connection. 
-```
+```csharp
+// SDK allows Swipe or Insert_or_swipe. 
+// Insert_or_swipe accepts chip-based transactions as well as Swipe/MSR transactions.
+// Swipe accepts only MSR/Swipe transactions.
+public void setTerminalMode(TerminalMode iTerminalCapability)
 
->   public void setReadername(ReaderName readerName) Refer: SDKLauncher
-
-Set Up the Bluetooth Connection
-==============================
-
-``` 
- Set the connection type by calling the following method:
- public void setConnection(ConnectionMode iConnectionMode) Refer: SDKLauncher
- Call the method below to discover the nearby devices and present the list to the user.
+// Insert_or_swipe is selected by default.
+// Refer to the SDKLauncher file and the sample app for more details.
 ```
 
->   public void establishBTConnectionAndRetrieveNearByDevices(SdkListener iListener)
+# Set Reader Device Connection Type
 
-```
-On selection, call the following method to establish the connection with the device.
-```
-
->   public void connectBTAtIndex(int iSelectedIndex) Refer: SDKLauncher
-
-```
-Implement the following methods of SDKListener: Refer SDKListener.
+```csharp
+// Only AnywhereCommerce_Walker device supports two types of connection: USB and Bluetooth. 
+// IDTech_Augusta only supports USB connection.
+public void setReadername(ReaderName readerName) // Refer: SDKLauncher
 ```
 
->   void BTPairedDevicesScanResult(List<BTDeviceInfo> iPairedDevicesList);  Callback method which returns the near by devices
->   void BTConnected(BTDeviceInfo iDeviceInfo);  Callback on Successful Bluetooth connection with the selected device
->   void BTConnectionFailed();  Callback on failure of Bluetooth connection
+# Set Up the Bluetooth Connection
+
+```csharp
+// Set the connection type by calling the following method:
+public void setConnection(ConnectionMode iConnectionMode) // Refer: SDKLauncher
+
+// Call the method below to discover the nearby devices and present the list to the user.
+public void establishBTConnectionAndRetrieveNearByDevices(SdkListener iListener)
+
+// On selection, call the following method to establish the connection with the device.
+public void connectBTAtIndex(int iSelectedIndex) // Refer: SDKLauncher
+
+// Implement the following methods of SDKListener: Refer SDKListener.
+void BTPairedDevicesScanResult(List<BTDeviceInfo> iPairedDevicesList);  // Callback method which returns the near by devices
+void BTConnected(BTDeviceInfo iDeviceInfo);  // Callback on Successful Bluetooth connection with the selected device
+void BTConnectionFailed();  // Callback on failure of Bluetooth connection
+```
 
 Transaction Processing
 ========================
@@ -172,51 +263,54 @@ Steps to post a transaction:
 
 1.  Create a transaction object.
 
->       private createTransactionRequest getRequest ()
->        {
->            Debug.Write("Session Token" + this.sessionToken);
->            Random random = new Random();
->
->            ApiOperationBase<ANetApiRequest, ANetApiResponse>.MerchantAuthentication = new merchantAuthenticationType()
->            {
->                Item = this.sessionToken,
->                mobileDeviceId = this.deviceID,
->                ItemElementName = ItemChoiceType.sessionToken
->            };
->
->           ApiOperationBase<ANetApiRequest, ANetApiResponse>.RunEnvironment = this.sdkEnvironment;
->
->            transactionRequestType transaction = new transactionRequestType()
->            {
->                amount = Convert.ToDecimal(this.amount.Text, CultureInfo.InvariantCulture),
->                transactionSettings = new settingType[] {
->                },
->                retail = new transRetailInfoType()
->                {
->                    deviceType = "7",
->                    marketType = "2",
->                },
->                order = new orderType()
->                {
->                    description = "Windows SDK Order",
->                    invoiceNumber = Convert.ToString(random.Next(1999999, 999999999))
->                }
->            };
->            transaction.terminalNumber = this.terminalID;
->            createTransactionRequest request = new createTransactionRequest()
->            {
->                transactionRequest = transaction
->            };
->            Debug.Write("Session Token" + this.sessionToken);
->            request.merchantAuthentication = new merchantAuthenticationType()
->            {
->                
->                Item = this.sessionToken,
->                mobileDeviceId = this.deviceID,
->                ItemElementName = ItemChoiceType.sessionToken
->            };
->            return request;
->        }
+Update the `getRequest` method to use Transaction Key authentication.
+
+```csharp
+private createTransactionRequest getRequest()
+{
+    Random random = new Random();
+
+    // Use Transaction Key for authentication
+    ApiOperationBase<ANetApiRequest, ANetApiResponse>.MerchantAuthentication = new merchantAuthenticationType()
+    {
+        name = "YOUR_API_LOGIN_ID",
+        Item = "YOUR_TRANSACTION_KEY",
+        ItemElementName = ItemChoiceType.transactionKey,
+    };
+
+    ApiOperationBase<ANetApiRequest, ANetApiResponse>.RunEnvironment = this.sdkEnvironment;
+
+    transactionRequestType transaction = new transactionRequestType()
+    {
+        amount = Convert.ToDecimal(this.amount.Text, CultureInfo.InvariantCulture),
+        transactionSettings = new settingType[] { },
+        retail = new transRetailInfoType()
+        {
+            deviceType = "7",
+            marketType = "2",
+        },
+        order = new orderType()
+        {
+            description = "Windows SDK Order",
+            invoiceNumber = Convert.ToString(random.Next(1999999, 999999999))
+        }
+    };
+    transaction.terminalNumber = this.terminalID;
+    createTransactionRequest request = new createTransactionRequest()
+    {
+        transactionRequest = transaction
+    };
+
+    // Use Transaction Key for authentication
+    request.merchantAuthentication = new merchantAuthenticationType()
+    {
+        name = "YOUR_API_LOGIN_ID",
+        Item = "YOUR_TRANSACTION_KEY",
+        ItemElementName = ItemChoiceType.transactionKey,
+    };
+    return request;
+}
+```
 
 2. Once the transaction object is populated, call one of the following
 methods to post a transaction, passing the transaction object,
